@@ -35,8 +35,7 @@ def send_request(name, uri):
         st.success("Feed creation successful!")
         # Display some part of the response, e.g., the created feed's ID
         response_data = response.json()
-        created_feed_id = response_data.get("data", {}).get("createFeed", {}).get("id", "No ID found")
-        st.write(f"Created feed ID: {created_feed_id}")
+        st.write(f"response: {response_data}")
     else:
         st.error(f"GraphQL request failed with status code: {response.status_code}")
         st.text(f"Response: {response.text}")
