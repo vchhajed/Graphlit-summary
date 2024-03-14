@@ -5,6 +5,50 @@ import datetime
 import json
 
 
+def create_token():
+    # Define the issuer and audience
+    issuer = "graphlit"
+    audience = "https://portal.graphlit.io"
+
+    # Specify the role (Owner, Contributor, Reader)
+    role = "Owner"
+
+    # Specify the expiration (one hour from now)
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+
+    # Define the payload
+    payload = {
+        "https://graphlit.io/jwt/claims": {
+            "x-graphlit-environment-id": environment_id,
+            "x-graphlit-organization-id": organization_id,
+            "x-graphlit-role": role,
+        },
+        "exp": expiration,
+        "iss": issuer,
+        "aud": audience,
+    }
+
+    # Sign the JWT
+    token = jwt.encode(payload, secret_key, algorithm="HS256") 
+    return token
+
+def graphlit_request(mutation, variables, func):
+    url = 'https://data-scus.graphlit.io/api/v1/graphql'
+    graphql_request = {'query': mutation, 'variables': variables}
+    headers = {'Authorization': 'Bearer {}'.format(st.session_state['token'])}
+
+    response = requests.post(url, json=graphql_request, headers=headers)
+
+    if response.status_code == 200:
+        st.success(f"{func} was successful!")
+        # Display some part of the response, e.g., the created feed's ID
+
+        response_data = response.json()
+        st.json(response.json())
+    else:
+        st.error(f"GraphQL request failed with status code: {response.status_code}")
+        st.text(f"Response: {response.text}")
+
 def send_request(name, uri):
     url = 'https://data-scus.graphlit.io/api/v1/graphql'
     mutation = """
@@ -26,19 +70,62 @@ def send_request(name, uri):
             "name": name
         }
     }
-    graphql_request = {'query': mutation, 'variables': variables}
-    headers = {'Authorization': 'Bearer {}'.format(st.session_state['token'])}
+    graphlit_request(mutation, variables, "feed creation")
 
-    response = requests.post(url, json=graphql_request, headers=headers)
+def list_feeds():
+    # Define the GraphQL mutation
+    query = """
+    query QueryFeeds($filter: FeedFilter!) {
+        feeds(filter: $filter) {
+            results {
+            id
+            name
+            creationDate
+            state
+            owner {
+                id
+            }
+            type
+            reddit {
+                subredditName
+            }
+            lastPostDate
+            lastReadDate
+            readCount
+            schedulePolicy {
+                recurrenceType
+                repeatInterval
+            }
+            }
+        }
+    }
+    """
 
-    if response.status_code == 200:
-        st.success("Feed creation successful!")
-        # Display some part of the response, e.g., the created feed's ID
-        response_data = response.json()
-        st.write(f"response: {response_data}")
-    else:
-        st.error(f"GraphQL request failed with status code: {response.status_code}")
-        st.text(f"Response: {response.text}")
+    # Define the variables for the mutation
+    variables = {
+    "filter": {
+        "offset": 0,
+        "limit": 100
+    }
+    }
+    graphlit_request(query, variables, "show list")
+
+
+def delete_all_feeds():
+    # Define the GraphQL mutation
+    query = """
+    mutation DeleteAllFeeds {
+        deleteAllFeeds {
+            id
+            state
+        }
+        }
+    """
+
+    # Define the variables for the mutation
+    variables = {
+    }
+    graphlit_request(query, variables, "delete all feed")
 
 def create_specs():
     # Define the GraphQL endpoint URL
@@ -70,7 +157,6 @@ def create_specs():
         "name": "GPT-3.5 Turbo Summarization"
     }
     }
-
 
     # Create a dictionary representing the GraphQL request
     graphql_request = {
@@ -217,78 +303,66 @@ def create_token(secret_key, environment_id, organization_id):
 
 # Streamlit UI for credentials and data feeding
 st.title("Data Feed and Summarization App")
+if st.session_state['token'] is None:
+    st.info("Generate token to get started!")
+else:
+    # Data feeding section
+    with st.form("data_feed_form"):
+        name = st.text_input("Name")
+        uri = st.text_input("URI to Feed Data")
+        submit_data = st.form_submit_button("Submit Data")
+    if st.session_state['token']:
+        list, delete = st.columns(2)
+        with list:
+            list_feed = st.button("List Feed")
+            if list_feed:
+                list_feeds()
+        with delete:
+            delete_feed = st.button("Delete All Feed")
+            if delete_feed:
+                delete_all_feeds()
+
+    
+    
+
+    if submit_data:
+        if st.session_state['token'] and uri:
+            send_request(name, uri)
+            st.success("Data submitted successfully!")
+        else:
+            st.error("Please generate a token and provide a URI.")
+
+    search = st.text_input("Search")
+    submit_summary = st.button("Generate Summary based on search")
+    if submit_summary:
+        if st.session_state['token'] and search:
+            if st.session_state['summarize_id']:
+                st.session_state['summary_result'] = generate_summary(st.session_state['summarize_id'], search)
+                st.success("Summary generated successfully!")
+            else:
+                create_specs()
+                st.session_state['summary_result'] = generate_summary(st.session_state['summarize_id'], search)
+                st.success("Summary generated successfully!")
+        else:
+            st.error("Please ensure you have a token and have provided a content filter.")
+
+    # Display summarization results
+    if st.session_state['summary_result']:
+        st.header("Summary Result")
+        st.json(st.session_state['summary_result'])
 with st.sidebar:
     with st.form("credentials_form"):
+        st.info("Look into App Settings in Graphlit to get info!")
         secret_key = st.text_input("Secret Key", type="password")
         environment_id = st.text_input("Environment ID")
         organization_id = st.text_input("Organization ID")
         submit_credentials = st.form_submit_button("Generate Token")
-
+    
 if submit_credentials:
     if secret_key and environment_id and organization_id:
         st.session_state['token'] = create_token(secret_key, environment_id, organization_id)
         st.success("Token generated successfully!")
+
+        
     else:
         st.error("Please fill in all the credentials.")
-
-# Data feeding section
-with st.form("data_feed_form"):
-    name = st.text_input("Name")
-    uri = st.text_input("URI to Feed Data")
-    submit_data = st.form_submit_button("Submit Data")
-
-if submit_data:
-    if st.session_state['token'] and uri:
-        send_request(name, uri)
-        st.success("Data submitted successfully!")
-    else:
-        st.error("Please generate a token and provide a URI.")
-
-search = st.text_input("Search")
-submit_summary = st.button("Generate Summary based on search")
-if submit_summary:
-    if st.session_state['token'] and search:
-        if st.session_state['summarize_id']:
-            st.session_state['summary_result'] = generate_summary(st.session_state['summarize_id'], search)
-            st.success("Summary generated successfully!")
-        else:
-            create_specs()
-            st.session_state['summary_result'] = generate_summary(st.session_state['summarize_id'], search)
-            st.success("Summary generated successfully!")
-    else:
-        st.error("Please ensure you have a token and have provided a content filter.")
-
-# Display summarization results
-if st.session_state['summary_result']:
-    st.header("Summary Result")
-    st.json(st.session_state['summary_result'])
-
-# Make sure to replace placeholder functions and logic with your actual implementation details.
-
-
-def create_token():
-    # Define the issuer and audience
-    issuer = "graphlit"
-    audience = "https://portal.graphlit.io"
-
-    # Specify the role (Owner, Contributor, Reader)
-    role = "Owner"
-
-    # Specify the expiration (one hour from now)
-    expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
-
-    # Define the payload
-    payload = {
-        "https://graphlit.io/jwt/claims": {
-            "x-graphlit-environment-id": environment_id,
-            "x-graphlit-organization-id": organization_id,
-            "x-graphlit-role": role,
-        },
-        "exp": expiration,
-        "iss": issuer,
-        "aud": audience,
-    }
-
-    # Sign the JWT
-    token = jwt.encode(payload, secret_key, algorithm="HS256") 
-    return token
