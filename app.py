@@ -305,51 +305,48 @@ def create_token(secret_key, environment_id, organization_id):
 st.title("Data Feed and Summarization App")
 if st.session_state['token'] is None:
     st.info("Generate token to get started!")
-else:
-    # Data feeding section
-    with st.form("data_feed_form"):
-        name = st.text_input("Name")
-        uri = st.text_input("URI to Feed Data")
-        submit_data = st.form_submit_button("Submit Data")
-    if st.session_state['token']:
-        list, delete = st.columns(2)
-        with list:
-            list_feed = st.button("List Feed")
-            if list_feed:
-                list_feeds()
-        with delete:
-            delete_feed = st.button("Delete All Feed")
-            if delete_feed:
-                delete_all_feeds()
+# Data feeding section
+with st.form("data_feed_form"):
+    name = st.text_input("Name")
+    uri = st.text_input("URI to Feed Data")
+    submit_data = st.form_submit_button("Submit Data")
+if st.session_state['token']:
+    list, delete = st.columns(2)
+    with list:
+        list_feed = st.button("List Feed")
+        if list_feed:
+            list_feeds()
+    with delete:
+        delete_feed = st.button("Delete All Feed")
+        if delete_feed:
+            delete_all_feeds()
 
-    
-    
+if submit_data:
+    if st.session_state['token'] and uri:
+        send_request(name, uri)
+        st.success("Data submitted successfully!")
+    else:
+        st.error("Please generate a token and provide a URI.")
 
-    if submit_data:
-        if st.session_state['token'] and uri:
-            send_request(name, uri)
-            st.success("Data submitted successfully!")
+search = st.text_input("Search")
+submit_summary = st.button("Generate Summary based on search")
+if submit_summary:
+    if st.session_state['token'] and search:
+        if st.session_state['summarize_id']:
+            st.session_state['summary_result'] = generate_summary(st.session_state['summarize_id'], search)
+            st.success("Summary generated successfully!")
         else:
-            st.error("Please generate a token and provide a URI.")
+            create_specs()
+            st.session_state['summary_result'] = generate_summary(st.session_state['summarize_id'], search)
+            st.success("Summary generated successfully!")
+    else:
+        st.error("Please ensure you have a token and have provided a content filter.")
 
-    search = st.text_input("Search")
-    submit_summary = st.button("Generate Summary based on search")
-    if submit_summary:
-        if st.session_state['token'] and search:
-            if st.session_state['summarize_id']:
-                st.session_state['summary_result'] = generate_summary(st.session_state['summarize_id'], search)
-                st.success("Summary generated successfully!")
-            else:
-                create_specs()
-                st.session_state['summary_result'] = generate_summary(st.session_state['summarize_id'], search)
-                st.success("Summary generated successfully!")
-        else:
-            st.error("Please ensure you have a token and have provided a content filter.")
-
-    # Display summarization results
-    if st.session_state['summary_result']:
-        st.header("Summary Result")
-        st.json(st.session_state['summary_result'])
+# Display summarization results
+if st.session_state['summary_result']:
+    st.header("Summary Result")
+    st.json(st.session_state['summary_result'])
+    
 with st.sidebar:
     with st.form("credentials_form"):
         st.info("Look into App Settings in Graphlit to get info!")
@@ -362,7 +359,5 @@ if submit_credentials:
     if secret_key and environment_id and organization_id:
         st.session_state['token'] = create_token(secret_key, environment_id, organization_id)
         st.success("Token generated successfully!")
-
-        
     else:
         st.error("Please fill in all the credentials.")
